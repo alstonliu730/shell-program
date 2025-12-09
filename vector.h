@@ -13,9 +13,11 @@ typedef struct {
  * 
  * Vector address will need to be freed using free_vector() method.
  * 
- * @param vect address to the vector object
+ * @param capacity the number of space inside the vector
+ * 
+ * @return address to the vector object
  */
-void vect_init(vector_t* vec, int capacity);
+vector_t* vect_init(int capacity);
 
 /**
  * Reallocates more memory for the vector data field.

@@ -4,9 +4,9 @@
 #include <stdio.h>
 
 // initialize the vector object and the 
-void vect_init(vector_t* vec, int capacity) {
+vector_t* vect_init(int capacity) {
     // allocate memory for vector object
-    vec = (vector_t *) malloc(sizeof(vector_t));
+    vector_t* vec = (vector_t *) malloc(sizeof(vector_t));
     assert(vec != NULL);
     
     // allocate memory for the list of strings
@@ -17,6 +17,9 @@ void vect_init(vector_t* vec, int capacity) {
     // Initialize vector size and capacity
     vec->size = 0;
     vec->capacity = capacity;
+    
+    // Return the address of the vector
+    return vec;
 }
 
 // Grow our vector when necessary

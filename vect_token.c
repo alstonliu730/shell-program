@@ -5,20 +5,14 @@
 #include "vect_token.h"
 #include <assert.h>
 
-static vector_t* token_vect = NULL;
-
+// Private Function Declaration
 static int read_string(const char *input, char *copy);
 static int isDigit(const char input);
 static int isAlpha(const char input);
-static int isSymbo(const char input);
-static const char escape_lookup[] = {
-    ['t'] = '\t',
-    ['n'] = '\n',
-    ['r'] = '\r',
-    ['v'] = '\v',
-    ['f'] = '\f'
-};
+static int isSymbol(const char* haystack, const char input);
 
+#define TRACKER_LIMIT 64
+#define HAYSTACK "_/.-"
 /* --------------------------------------------------------------------------------- */
 /**
  * Split the given string into tokens.
@@ -26,28 +20,77 @@ static const char escape_lookup[] = {
  * The array of tokens obtained using this function can be freed using 
  * free_tokens().
  *
+ * @param vec heap-allocated vector data structure
  * @param input input string
  *
- * @return a null-terminated heap-allocated array of token strings
+ * @return number of tokens found
  */
-vector_t* get_tokens(const char *input) {
-    // initialize the vector object
-    vect_init(token_vect, VECT_MAX);
+int get_tokens(vector_t* vec, const char *input) {
+    const char* curr = input;
 
-    char* curr = input;
+    // Keep track of current token
+    char tracker[TRACKER_LIMIT];
+    int tok_len = 0;
+
     // Loop through the input
-    while (curr && curr != '\0') {
-        switch (curr) {
-            case '\\':
-                if ((curr + 1)) {
-                    escape_lookup[(++curr)];
-                }
+    while (curr && *(curr) != '\0') {
+        // check if it's an alphanumeric char
+        if (isAlpha(*curr) || isDigit(*curr) || isSymbol(HAYSTACK, *curr)) {
+            tracker[tok_len] = *curr;
+            tok_len++;
+        } else {
+            // check previous token
+            if (tok_len > 0) {
+                tracker[tok_len] = '\0';
+
+                // add the token
+                add_token(vec, tracker, tok_len + 1);
+
+                // reset the tracker
+                memset(tracker, 0, TRACKER_LIMIT);
+                tok_len = 0;
+            }
+
+            // Check symbol table
+            switch (*(curr)) {
+                case '\"':
+                    // read the string
+                    tok_len = read_string((++curr), tracker);
+                    curr += (tok_len);
+
+                    // add the token
+                    add_token(vec, tracker, tok_len);
+
+                    // reset the tracker
+                    memset(tracker, 0, TRACKER_LIMIT);
+                    tok_len = 0;
+                    break;
+                // escape sequence
+                case '\\':
+                    curr += 1;
+                    break;
+                // space (ignore)
+                case ' ':
+                    break;
+                // symbols & letters
+                default:
+                    add_token(vec, curr, sizeof(char));
+                    break;
+            }
         }
+        
         curr++;
     }
+
+    // check if there's a token left
+    if (tok_len > 0) {
+        add_token(vec, tracker, tok_len);
+    }
+
+    return vec->size;
 }
 
-//Adds a token assuming our vector is not at capacity
+// Adds a token to the vector
 void add_token(vector_t* vec, const char *token, size_t length) {
     assert(vec != NULL);
 
@@ -58,26 +101,29 @@ void add_token(vector_t* vec, const char *token, size_t length) {
     }
 
     // allocate memory for the new token
-    char* new_tok = (char *) malloc(sizeof(char) * length);
-    strncpy(new_tok, token, length);
+    char* new_token = (char *) malloc(sizeof(char) * length);
+    strncpy(new_token, token, length);
 
-    //
+    // add to the vector
+    *(vec->data + vec->size) = new_token;
+    vec->size++;
 }
 
 // Reads in the rest of the string, creates a copy of our string and sets it equal to copy
 int read_string(const char *input, char *copy) {
     unsigned int bytes = 0;
-
     //While there is input and we have not reached the second quote
-    while (*input && *input != '"') {
-      //Set our copy equal to the string and increment the counter
-      *copy = *input;
-      ++bytes;
-      ++copy;
-      ++input;
+    while (*input != '\0') {
+        //Set our copy equal to the string and increment the counter
+        if (*input == '\"') { break; }
+        *copy = *input;
+        bytes++;
+        copy++;
+        input++;
     }
     //Terminate the string
     *copy = '\0';
+    bytes++;
 
     //Return the size to iterate over the quoted string
     return bytes;
@@ -94,3 +140,8 @@ int isAlpha(const char input) {
         ((input >= 'A') && (input <= 'Z'));
 }
 
+// Checks if the given character is in the given haystack
+int isSymbol(const char* haystack, const char input) {
+    assert(&input != NULL);
+    return strstr(haystack, &input) != NULL;
+}

@@ -12,11 +12,12 @@
  * The array of tokens obtained using this function can be freed using 
  * free_tokens().
  *
+ * @param vec address to the vector object
  * @param input input string
  *
- * @return a heap-allocated vector objects with the separated tokens
+ * @return number of tokens found
  */
-vector_t* get_tokens(const char *input);
+int get_tokens(vector_t* vec, const char *input);
 
 /**
  * Free the given array of tokens created using get_tokens().
@@ -28,14 +29,13 @@ vector_t* get_tokens(const char *input);
  */
 void free_tokens(vector_t* vec);
 
-
 /**
  * Adds a token to the vector data structure.
  * 
  * @param vec address to the vector object
  * @param token token string to input
+ * @param length number of characters in the token
  */
-void add_token(vector_t* vec, const char *token);
-
+void add_token(vector_t* vec, const char *token, size_t length);
 
 #endif /* _TOKENS_H */
