@@ -41,6 +41,25 @@ void vect_grow(vector_t* vec) {
     }
 }
 
+// adds data into the vector object and returns the number of bytes written
+void add_data(vector_t* vec, const char* input, size_t length) {
+    assert(vec != NULL);
+
+    // allocate memory for the char array
+    if (vec->size + 1 >= vec->capacity) {
+        // allocate more space
+        vect_grow(vec);
+    }
+
+    // allocate memory for the new token
+    char* new_token = (char *) malloc(sizeof(char) * length);
+    strncpy(new_token, input, length);
+
+    // add to the vector
+    *(vec->data + vec->size) = new_token;
+    vec->size++;
+}
+
 //Returns if our vector is at capacity
 int vect_isFull(vector_t* vec) {
     assert(vec != NULL);

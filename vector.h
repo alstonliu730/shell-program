@@ -32,7 +32,7 @@ void vect_grow(vector_t* vec);
  * 
  * @param vect address to the vector object
  * 
- * @return Returns `True` if the vector is full, otherwise `False`.
+ * @return Returns `1` if the vector is full, otherwise `0`.
  */
 int vect_isFull(vector_t* vec);
 
@@ -41,9 +41,20 @@ int vect_isFull(vector_t* vec);
  * 
  * @param vect address to the vector object
  * 
- * @return Returns `True` if the vector is empty, otherwise `False`.
+ * @return Returns `1` if the vector is empty, otherwise `0`.
  */
 int vect_isFull(vector_t* vec);
+
+/**
+ * Adds the given input with the length of the input.
+ * 
+ * This allocates memory from the heap.
+ * 
+ * @param vec address to the vector object
+ * @param input string input
+ * @param length size of the string input
+ */
+void add_data(vector_t* vec, const char* input, size_t length);
 
 /**
  * Free the memory in the vector including the data array.

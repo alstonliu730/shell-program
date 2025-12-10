@@ -6,7 +6,7 @@
 #include <assert.h>
 
 // Private Function Declaration
-static int read_string(const char *input, char *copy);
+static int _read_string(const char *input, char *copy);
 static int isDigit(const char input);
 static int isAlpha(const char input);
 static int isSymbol(const char* haystack, const char input);
@@ -18,7 +18,7 @@ static int isSymbol(const char* haystack, const char input);
  * Split the given string into tokens.
  *
  * The array of tokens obtained using this function can be freed using 
- * free_tokens().
+ * free_vector() on the vector object.
  *
  * @param vec heap-allocated vector data structure
  * @param input input string
@@ -55,7 +55,7 @@ int get_tokens(vector_t* vec, const char *input) {
             switch (*(curr)) {
                 case '\"':
                     // read the string
-                    tok_len = read_string((++curr), tracker);
+                    tok_len = _read_string((++curr), tracker);
                     curr += (tok_len);
 
                     // add the token
@@ -72,7 +72,7 @@ int get_tokens(vector_t* vec, const char *input) {
                 // space (ignore)
                 case ' ':
                     break;
-                // symbols & letters
+                // any symbols
                 default:
                     add_token(vec, curr, sizeof(char));
                     break;
@@ -87,30 +87,18 @@ int get_tokens(vector_t* vec, const char *input) {
         add_token(vec, tracker, tok_len);
     }
 
+    // returns the total number of tokens found
     return vec->size;
 }
 
 // Adds a token to the vector
 void add_token(vector_t* vec, const char *token, size_t length) {
     assert(vec != NULL);
-
-    // Check if the vector has space
-    if (vect_isFull(vec)) {
-        // allocate more space
-        vect_grow(vec);
-    }
-
-    // allocate memory for the new token
-    char* new_token = (char *) malloc(sizeof(char) * length);
-    strncpy(new_token, token, length);
-
-    // add to the vector
-    *(vec->data + vec->size) = new_token;
-    vec->size++;
+    add_data(vec, token, length);
 }
 
 // Reads in the rest of the string, creates a copy of our string and sets it equal to copy
-int read_string(const char *input, char *copy) {
+int _read_string(const char *input, char *copy) {
     unsigned int bytes = 0;
     //While there is input and we have not reached the second quote
     while (*input != '\0') {

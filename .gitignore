@@ -20,4 +20,4 @@ build/
 *__pycache__/
 
 # Temporary file
-tmp/
+*tmp/
