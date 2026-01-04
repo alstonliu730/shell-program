@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 #include "vector.h"
 #include "vect_token.h"
 #include <assert.h>
@@ -12,7 +13,9 @@ static int isAlpha(const char input);
 static int isSymbol(const char* haystack, const char input);
 
 #define TRACKER_LIMIT 64
-#define HAYSTACK "_/.-"
+
+const char symbols[] =  "_/.-";
+
 /* --------------------------------------------------------------------------------- */
 /**
  * Split the given string into tokens.
@@ -35,7 +38,7 @@ int get_tokens(vector_t* vec, const char *input) {
     // Loop through the input
     while (curr && *(curr) != '\0') {
         // check if it's an alphanumeric char
-        if (isAlpha(*curr) || isDigit(*curr) || isSymbol(HAYSTACK, *curr)) {
+        if (isSymbol(symbols, (*curr)) || isAlpha(*curr) || isDigit(*curr)) {
             tracker[tok_len] = *curr;
             tok_len++;
         } else {
@@ -52,7 +55,7 @@ int get_tokens(vector_t* vec, const char *input) {
             }
 
             // Check symbol table
-            switch (*(curr)) {
+            switch (*(curr)) {             
                 case '\"':
                     // read the string
                     tok_len = _read_string((++curr), tracker);
@@ -131,5 +134,6 @@ int isAlpha(const char input) {
 // Checks if the given character is in the given haystack
 int isSymbol(const char* haystack, const char input) {
     assert(&input != NULL);
-    return strstr(haystack, &input) != NULL;
+    
+    return (strchr(haystack, input) != NULL);
 }

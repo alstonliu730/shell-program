@@ -61,6 +61,13 @@ class ShellTests(ShellTestCase):
             "ls\n-la\n/home/bob/secret_folder/secrets3\n>\noutput.txt"
         )
 
+    def test09(self):
+        """Recognizes dash arguments"""
+        self.assertEqual(
+            sh("echo 'whoami --help' | ./tokenize"),
+            "whoami\n--help"
+        )
+
 if __name__ == '__main__':
     print(f"-= {YELLOW}Running tests for {TOKENIZE}{RESET} =-")
     unittest.main(testRunner = unittest.TextTestRunner(resultclass = PrettierTextTestResult))
