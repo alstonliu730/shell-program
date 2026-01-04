@@ -21,3 +21,6 @@ build/
 
 # Temporary file
 *tmp/
+
+# VSCode folder
+.vscode/
