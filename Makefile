@@ -14,6 +14,9 @@ endif
 
 all: shell tokenize
 
+debug: CFLAGS += -DDEBUG -Wall 
+debug: shell tokenize
+
 valgrind: shell tokenize
 	$(LEAKTEST) ./tokenize
 	$(LEAKTEST) ./shell

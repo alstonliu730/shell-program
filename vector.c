@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <assert.h>
 #include <stdio.h>
+#include <string.h>
 
 // initialize the vector object and the 
 vector_t* vect_init(int capacity) {

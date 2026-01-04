@@ -1,6 +1,8 @@
 #ifndef _VECTOR_H
 #define _VECTOR_H
 
+#include <stddef.h>
+
 //Declare vector structure
 typedef struct {
     int size;

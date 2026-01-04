@@ -12,6 +12,13 @@
 #include "vector.h"
 #include "vect_token.h"
 
+// DEBUGGING PRINT
+#ifdef DEBUG
+    #define DEBUG_PRINT(...) fprintf(stderr, __VA_ARGS__);
+#else
+    #define DEBUG_PRINT(...) do {} while(0);
+#endif
+
 // max number of input per line
 #define MAX_INPUT 256
 #define HALF_INPUT (MAX_INPUT / 2)
@@ -27,7 +34,7 @@ const char haystack[] = "()|<>";
 char** parse(char* input, int* size);
 void execute(int argc, char** argv);
 int find_operator(int argc, char** argv);
-void free_cmd_vect(vector_t** cmd_vect);
+static void handle_parenthesis(int argc, char** argv);
 
 /**
  * Parses through the input and returns the list of tokens.
@@ -52,7 +59,7 @@ char** parse(char* input, int* size) {
         char* curr = tok_vect->data[i];
 
         // allocate memory for each string
-        tokens[i] = (char *) calloc(length, sizeof(char));
+        tokens[i] = (char *) malloc(length * sizeof(char));
 
         // copy string into result array
         strncpy(tokens[i], curr, length);    
@@ -62,7 +69,7 @@ char** parse(char* input, int* size) {
     free_vector(tok_vect);
 
     // return the resulting array and number of tokens
-    *size = num_tok;
+    *size = (num_tok - 1);
     return tokens;
 }
 
@@ -130,13 +137,73 @@ int find_operator(int argc, char** argv) {
     return (pipe_pos != 0) ? pipe_pos : ((redir_pos != 0) ? redir_pos : -1);
 }
 
-// executes commands in the arguments
+// executes commands in the arguments (divide and conquer)
 void execute(int argc, char** argv) {
     assert(argv != NULL);
     assert(argc >= 1);
     
-    
+    #ifdef DEBUG
+        DEBUG_PRINT("DEBUG: printing argv: \n")
+        for (int i = 0; i < argc; i++) {
+            DEBUG_PRINT("argv[%d] = %s\n", i, argv[i])
+        }
+    #endif
+
+    // find the pivot until base case
+    int pivot = find_operator(argc, argv);
+    char** left;
+    char** right;
+
+    // Base Case
+    if (pivot < 0) {
+        // Check for parentheses
+        if (argv[0][0] == '(' && argv[argc - 1][0] == ')') {
+            handle_parenthesis(argc, argv);
+            return;
+        } 
+
+        // Fork a child and execute the command
+        pid_t child = fork();
+        
+        if (child == 0) {           // CHILD
+            execvp(argv[0], argv);
+        } else {                    // PARENT
+            waitpid(child, NULL, 0);
+        }
+    } else {
+        // TODO: implement operator base case
+        perror("Operator's not implemented yet!");
+    }
 }
+
+// Assuming that the input is a full parenthesis statement
+static void handle_parenthesis(int argc, char** argv) {
+    // new length for the statement
+    int new_length = argc - 2;
+
+    // allocate memory for the statement inside
+    char **str_cmd = (char **) malloc(new_length * sizeof(char*));
+
+    // copy the statement inside 
+    for(int i = 1; i < (argc - 1); i++) {
+        int tok_len = strlen(argv[i]);
+        str_cmd[i - 1] = (char *) malloc(tok_len * sizeof(char));
+
+        // copy argument into new string array
+        memcpy(str_cmd[i - 1], argv[i], tok_len);
+    }
+
+    // execute the command
+    execute(new_length, str_cmd);
+
+    // free the memory
+    for(int i = 0; i < new_length; i++) {
+        free(str_cmd[i]);
+    }
+    free(str_cmd);
+    return;
+}
+
 
 //main method for user input to mini shell
 int main(int argc, char **argv) {
