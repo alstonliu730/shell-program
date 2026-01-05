@@ -36,7 +36,7 @@ int get_tokens(vector_t* vec, const char *input) {
     int tok_len = 0;
 
     // Loop through the input
-    while (curr && *(curr) != '\0') {
+    while (curr && (*(curr) != '\0' && *curr != '\n')) {
         // check if it's an alphanumeric char
         if (isSymbol(symbols, (*curr)) || isAlpha(*curr) || isDigit(*curr)) {
             tracker[tok_len] = *curr;
@@ -55,7 +55,7 @@ int get_tokens(vector_t* vec, const char *input) {
             }
 
             // Check symbol table
-            switch (*(curr)) {             
+            switch (*(curr)) {            
                 case '\"':
                     // read the string
                     tok_len = _read_string((++curr), tracker);
@@ -74,6 +74,7 @@ int get_tokens(vector_t* vec, const char *input) {
                     break;
                 // space (ignore)
                 case ' ':
+                case '\x1B':
                     break;
                 // any symbols
                 default:

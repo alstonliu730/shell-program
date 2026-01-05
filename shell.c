@@ -24,6 +24,11 @@
 #define HALF_INPUT (MAX_INPUT / 2)
 #define QUARTER_INPUT (MAX_INPUT / 4)
 
+// Child Error Status
+#define ERROR_SUCCESS 0x1
+#define ERROR_EXIT 0xF
+#define ERROR_FAIL 0x10
+
 // max number of command sequence
 #define MAX_SEQ 8
 
@@ -33,8 +38,9 @@ const char haystack[] = "()|<>";
 // Function declarations
 char** parse(char* input, int* size);
 void execute(int argc, char** argv);
-int find_operator(int argc, char** argv);
-static void handle_parenthesis(int argc, char** argv);
+static void _exec_cmd(char** argv, int* err_no);
+static void _handle_parenthesis(int argc, char** argv);
+static int _find_operator(int argc, char** argv);
 
 /**
  * Parses through the input and returns the list of tokens.
@@ -69,7 +75,7 @@ char** parse(char* input, int* size) {
     free_vector(tok_vect);
 
     // return the resulting array and number of tokens
-    *size = (num_tok - 1);
+    *size = num_tok;
     return tokens;
 }
 
@@ -90,7 +96,7 @@ char** parse(char* input, int* size) {
  * @returns the position of the lowest-priority operator
  * 
  */
-int find_operator(int argc, char** argv) {
+static int _find_operator(int argc, char** argv) {
     int depth = 0;
     int semicolon_pos = -1, pipe_pos = -1, redir_pos = -1;
 
@@ -145,12 +151,12 @@ void execute(int argc, char** argv) {
     #ifdef DEBUG
         DEBUG_PRINT("DEBUG: printing argv: \n")
         for (int i = 0; i < argc; i++) {
-            DEBUG_PRINT("argv[%d] = %s\n", i, argv[i])
+            DEBUG_PRINT("\targv[%d] = %s\n", i, argv[i])
         }
     #endif
 
     // find the pivot until base case
-    int pivot = find_operator(argc, argv);
+    int pivot = _find_operator(argc, argv);
     char** left;
     char** right;
 
@@ -158,7 +164,7 @@ void execute(int argc, char** argv) {
     if (pivot < 0) {
         // Check for parentheses
         if (argv[0][0] == '(' && argv[argc - 1][0] == ')') {
-            handle_parenthesis(argc, argv);
+            _handle_parenthesis(argc, argv);
             return;
         } 
 
@@ -166,9 +172,40 @@ void execute(int argc, char** argv) {
         pid_t child = fork();
         
         if (child == 0) {           // CHILD
-            execvp(argv[0], argv);
+            int err = 0; // status
+
+            // use execute helper function
+            _exec_cmd(argv, &err);
         } else {                    // PARENT
-            waitpid(child, NULL, 0);
+            int status;
+            waitpid(child, &status, 0);
+
+            status = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
+            DEBUG_PRINT("Status: %d\n", status);
+
+            // check error status 
+            switch (status) {
+                case ERROR_SUCCESS:
+                    DEBUG_PRINT("Executed Successfully.\n")
+                    break;
+
+                case ERROR_EXIT: // exit function
+                {
+                    DEBUG_PRINT("Exiting Shell with status %d\n", WEXITSTATUS(status))
+                    // Free the memory from argv
+                    for(int i = 0; i < argc; i++) {
+                        free(argv[i]);
+                    }
+                    free(argv);
+
+                    // prevent
+                    printf("Bye Bye.\n");
+                    exit(0);
+                    break;
+                }
+                default: // error 
+                    break;
+            }
         }
     } else {
         // TODO: implement operator base case
@@ -176,8 +213,24 @@ void execute(int argc, char** argv) {
     }
 }
 
+// Command helper
+static void _exec_cmd(char** argv, int* err_no) {
+    char* command = argv[0];
+    DEBUG_PRINT("_exec_cmd: command = \"%s\"\n", command);
+
+    // Built-in commands
+    if(strncmp(command, "exit", strlen("exit")) == 0) {
+        DEBUG_PRINT("PID %d exiting with status %d\n", getpid(), ERROR_EXIT)
+        _exit(ERROR_EXIT);
+    }
+    execvp(argv[0], argv);
+
+    _exit(ERROR_FAIL);
+}
+
+
 // Assuming that the input is a full parenthesis statement
-static void handle_parenthesis(int argc, char** argv) {
+static void _handle_parenthesis(int argc, char** argv) {
     // new length for the statement
     int new_length = argc - 2;
 
@@ -205,7 +258,7 @@ static void handle_parenthesis(int argc, char** argv) {
 }
 
 
-//main method for user input to mini shell
+// main method for user input to mini shell
 int main(int argc, char **argv) {
     // welcome message
     printf("Welcome to mini-shell.\n");
@@ -226,10 +279,7 @@ int main(int argc, char **argv) {
 
         // parse input into token
         int nToken = 0;
-        char** tokens = parse(input, &nToken); 
-       
-        // flush out unneccessary input
-        fflush(stdin);
+        char** tokens = parse(input, &nToken);
 
         // execute the commands
         execute(nToken, tokens);
@@ -239,6 +289,9 @@ int main(int argc, char **argv) {
             free(tokens[i]);
         }
         free(tokens);
+
+        // Clear input buffer
+        memset(input, 0, MAX_INPUT);
     }
 
     // should not return here (since user will exit through a command)
