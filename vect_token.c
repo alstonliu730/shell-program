@@ -12,9 +12,16 @@ static int isDigit(const char input);
 static int isAlpha(const char input);
 static int isSymbol(const char* haystack, const char input);
 
-#define TRACKER_LIMIT 64
+#define TRACKER_LIMIT 128
 
 const char symbols[] =  "_/.-";
+
+// DEBUGGING PRINT
+#ifdef DEBUG
+    #define DEBUG_PRINT(...) fprintf(stderr, __VA_ARGS__);
+#else
+    #define DEBUG_PRINT(...) do {} while(0);
+#endif
 
 /* --------------------------------------------------------------------------------- */
 /**
@@ -36,7 +43,7 @@ int get_tokens(vector_t* vec, const char *input) {
     int tok_len = 0;
 
     // Loop through the input
-    while (curr && (*(curr) != '\0' && *curr != '\n')) {
+    while (curr && *(curr) != '\0') {
         // check if it's an alphanumeric char
         if (isSymbol(symbols, (*curr)) || isAlpha(*curr) || isDigit(*curr)) {
             tracker[tok_len] = *curr;
@@ -60,9 +67,24 @@ int get_tokens(vector_t* vec, const char *input) {
                     // read the string
                     tok_len = _read_string((++curr), tracker);
                     curr += (tok_len);
-
+                    
                     // add the token
                     add_token(vec, tracker, tok_len);
+
+                    // reset the tracker
+                    memset(tracker, 0, TRACKER_LIMIT);
+                    tok_len = 0;
+                    break;
+                case '>':
+                case '<':
+                case '|':
+                case '(':
+                case ')':
+                case ';':
+                    tracker[0] = *curr;
+                    tracker[1] = '\0';
+                    // add the token separately
+                    add_token(vec, tracker, sizeof(char) * 2);
 
                     // reset the tracker
                     memset(tracker, 0, TRACKER_LIMIT);
@@ -74,11 +96,8 @@ int get_tokens(vector_t* vec, const char *input) {
                     break;
                 // space (ignore)
                 case ' ':
-                case '\x1B':
-                    break;
                 // any symbols
                 default:
-                    add_token(vec, curr, sizeof(char));
                     break;
             }
         }
@@ -88,7 +107,10 @@ int get_tokens(vector_t* vec, const char *input) {
 
     // check if there's a token left
     if (tok_len > 0) {
-        add_token(vec, tracker, tok_len);
+        // add a null terminating character
+        tracker[tok_len] = '\0';
+
+        add_token(vec, tracker, tok_len + 1);
     }
 
     // returns the total number of tokens found
@@ -98,6 +120,9 @@ int get_tokens(vector_t* vec, const char *input) {
 // Adds a token to the vector
 void add_token(vector_t* vec, const char *token, size_t length) {
     assert(vec != NULL);
+
+    DEBUG_PRINT("Adding Token %s to vector.\n", token)
+    
     add_data(vec, token, length);
 }
 

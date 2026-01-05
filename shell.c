@@ -46,12 +46,13 @@ static int _find_operator(int argc, char** argv);
  * Parses through the input and returns the list of tokens.
  * 
  * @param input user commands in a string format
- * 
+ * @param size resulting number of tokens found
  * @return address to the tokens
  */
 char** parse(char* input, int* size) {
     assert(input != NULL);
 
+    DEBUG_PRINT("Parse input: %s\n", input);
     vector_t* tok_vect = vect_init(MAX_INPUT);  // Create a local vector for the tokens
     int num_tok = get_tokens(tok_vect, input);  // get tokens from the input
     
@@ -61,7 +62,7 @@ char** parse(char* input, int* size) {
     // copy tokens into the new buffer
     for(int i = 0; i < num_tok; i++) {
         // local variables
-        size_t length = strlen(tok_vect->data[i]);
+        size_t length = strlen(tok_vect->data[i]) + 1; // include null-terminated char
         char* curr = tok_vect->data[i];
 
         // allocate memory for each string
@@ -149,9 +150,9 @@ void execute(int argc, char** argv) {
     assert(argc >= 1);
     
     #ifdef DEBUG
-        DEBUG_PRINT("DEBUG: printing argv: \n")
+        DEBUG_PRINT("DEBUG: execute: argv = \n")
         for (int i = 0; i < argc; i++) {
-            DEBUG_PRINT("\targv[%d] = %s\n", i, argv[i])
+            DEBUG_PRINT("- argv[%d] = %s\n", i, argv[i])
         }
     #endif
 
@@ -180,6 +181,7 @@ void execute(int argc, char** argv) {
             int status;
             waitpid(child, &status, 0);
 
+            // Return from the child
             status = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
             DEBUG_PRINT("Status: %d\n", status);
 
@@ -198,7 +200,7 @@ void execute(int argc, char** argv) {
                     }
                     free(argv);
 
-                    // prevent
+                    // Exit the entire program
                     printf("Bye Bye.\n");
                     exit(0);
                     break;
@@ -213,7 +215,7 @@ void execute(int argc, char** argv) {
     }
 }
 
-// Command helper
+// Command helper (Assumes this is a child)
 static void _exec_cmd(char** argv, int* err_no) {
     char* command = argv[0];
     DEBUG_PRINT("_exec_cmd: command = \"%s\"\n", command);
@@ -222,9 +224,12 @@ static void _exec_cmd(char** argv, int* err_no) {
     if(strncmp(command, "exit", strlen("exit")) == 0) {
         DEBUG_PRINT("PID %d exiting with status %d\n", getpid(), ERROR_EXIT)
         _exit(ERROR_EXIT);
+    } else {    // Otherwise 
+        execvp(argv[0], argv); // replaces the process
     }
-    execvp(argv[0], argv);
-
+    
+    // error
+    fprintf(stderr, "Unknown Command: %s\n", command);
     _exit(ERROR_FAIL);
 }
 
@@ -269,17 +274,38 @@ int main(int argc, char **argv) {
 
         // place to store input from user
         char input[MAX_INPUT];
-        
+        fflush(stdin);
+
         // read user input from stdin
-        if (fgets(input, MAX_INPUT, stdin) == NULL) { // (CTRL-D)
+        size_t len;
+        if (fgets(input, MAX_INPUT, stdin) != NULL) {
+            len = strlen(input);
+            if (len > 0 && input[len - 1] == '\n') {
+                // replace the newline with null terminated string
+                input[len - 1] = '\0';
+            }
+            DEBUG_PRINT("DEBUG: User entered %s\n", input)
+        } else {        // (CTRL-D)
             // end program
             printf("Bye bye.\n");
-            return 0;
+            exit(0);
         }
 
         // parse input into token
         int nToken = 0;
         char** tokens = parse(input, &nToken);
+
+        // If there's no input continue
+        if (nToken == 0) {
+            continue;
+        }
+
+        #ifdef DEBUG
+            DEBUG_PRINT("DEBUG tokens: \n")
+            for (int i = 0; i < nToken; i++) {
+                DEBUG_PRINT("- tokens[%d] = %s\n", i, tokens[i])
+            }
+        #endif
 
         // execute the commands
         execute(nToken, tokens);
