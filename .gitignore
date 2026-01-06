@@ -20,4 +20,7 @@ build/
 *__pycache__/
 
 # Temporary file
-tmp/
+*tmp/
+
+# VSCode folder
+.vscode/
