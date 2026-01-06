@@ -41,6 +41,7 @@ void execute(int argc, char** argv);
 static void _exec_cmd(char** argv, int* err_no);
 static void _handle_parenthesis(int argc, char** argv);
 static int _find_operator(int argc, char** argv);
+static void free_strings(char** arr, int n);
 
 /**
  * Parses through the input and returns the list of tokens.
@@ -162,7 +163,7 @@ void execute(int argc, char** argv) {
     char** right;
 
     // Base Case
-    if (pivot < 0) {
+    if (pivot < 0 || pivot == (argc - 1)) {
         // Check for parentheses
         if (argv[0][0] == '(' && argv[argc - 1][0] == ')') {
             _handle_parenthesis(argc, argv);
@@ -195,10 +196,7 @@ void execute(int argc, char** argv) {
                 {
                     DEBUG_PRINT("Exiting Shell with status %d\n", WEXITSTATUS(status))
                     // Free the memory from argv
-                    for(int i = 0; i < argc; i++) {
-                        free(argv[i]);
-                    }
-                    free(argv);
+                    free_strings(argv, argc);
 
                     // Exit the entire program
                     printf("Bye Bye.\n");
@@ -208,10 +206,48 @@ void execute(int argc, char** argv) {
                 default: // error 
                     break;
             }
+			return;
         }
     } else {
-        // TODO: implement operator base case
-        perror("Operator's not implemented yet!");
+		// Check operator
+		char operator = argv[pivot][0];
+		
+		int nLeft = pivot; // 0 -> (pivot - 1) (inclu.)
+		int nRight = argc - pivot - 1; // (pivot + 1) -> (argc - 1) (inclu.)
+		switch (operator) {
+			case ';':
+				// split the statement into left and right commands
+				left = (char**) malloc(sizeof(char*) * nLeft);
+				right = (char**) malloc(sizeof(char*) * nRight);
+
+				// copy the left statements
+				for(int i = 0; i < nLeft; i++) {
+					int tok_len = strlen(argv[i]) + 1;
+					left[i] = (char *) malloc(sizeof(char) * tok_len);
+
+					strncpy(left[i], argv[i], tok_len);
+				}
+
+				// copy the right statements
+				for (int j = pivot + 1; j < argc; j++) {
+					int tok_len = strlen(argv[j]) + 1;
+					right[j - pivot - 1] = (char *) malloc(sizeof(char) * tok_len);
+
+					strncpy(right[j - pivot - 1], argv[j], tok_len);
+				}
+
+				// execute first left then right
+				execute(nLeft, left);
+				execute(nRight, right);
+
+				// free the memory for both statements
+				free_strings(left, nLeft);
+				free_strings(right, nRight);
+				break;
+			default:
+				break;
+		}
+		return;
     }
 }
 
@@ -240,28 +276,32 @@ static void _handle_parenthesis(int argc, char** argv) {
     int new_length = argc - 2;
 
     // allocate memory for the statement inside
-    char **str_cmd = (char **) malloc(new_length * sizeof(char*));
+    char **str_cmds = (char **) malloc(new_length * sizeof(char*));
 
     // copy the statement inside 
     for(int i = 1; i < (argc - 1); i++) {
         int tok_len = strlen(argv[i]);
-        str_cmd[i - 1] = (char *) malloc(tok_len * sizeof(char));
+        str_cmds[i - 1] = (char *) malloc(tok_len * sizeof(char));
 
         // copy argument into new string array
-        memcpy(str_cmd[i - 1], argv[i], tok_len);
+        memcpy(str_cmds[i - 1], argv[i], tok_len);
     }
 
     // execute the command
-    execute(new_length, str_cmd);
+    execute(new_length, str_cmds);
 
     // free the memory
-    for(int i = 0; i < new_length; i++) {
-        free(str_cmd[i]);
-    }
-    free(str_cmd);
+    free_strings(str_cmds, new_length);
     return;
 }
 
+// free the strings in the allocated array
+static void free_strings(char** arr, int n) {
+	for(int i = 0; i < n; i++) {
+		free(arr[n]);
+	}
+	free(arr);
+}
 
 // main method for user input to mini shell
 int main(int argc, char **argv) {
@@ -311,10 +351,7 @@ int main(int argc, char **argv) {
         execute(nToken, tokens);
 
         // Free the memory in tokens
-        for (int i = 0; i < nToken; i++) {
-            free(tokens[i]);
-        }
-        free(tokens);
+        free_strings(tokens, nToken);
 
         // Clear input buffer
         memset(input, 0, MAX_INPUT);
