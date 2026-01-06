@@ -64,13 +64,12 @@ char** parse(char* input, int* size) {
     for(int i = 0; i < num_tok; i++) {
         // local variables
         size_t length = strlen(tok_vect->data[i]) + 1; // include null-terminated char
-        char* curr = tok_vect->data[i];
 
         // allocate memory for each string
         tokens[i] = (char *) malloc(length * sizeof(char));
 
         // copy string into result array
-        strncpy(tokens[i], curr, length);    
+        strncpy(tokens[i], tok_vect->data[i], length);    
     }
 
     // free the token vector
@@ -298,7 +297,7 @@ static void _handle_parenthesis(int argc, char** argv) {
 // free the strings in the allocated array
 static void free_strings(char** arr, int n) {
 	for(int i = 0; i < n; i++) {
-		free(arr[n]);
+		free(arr[i]);
 	}
 	free(arr);
 }
