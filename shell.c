@@ -38,8 +38,11 @@ const char haystack[] = "()|<>";
 // Function declarations
 char** parse(char* input, int* size);
 void execute(int argc, char** argv);
-static void _exec_cmd(char** argv, int* err_no);
+static void _execute_cmd(char** argv, int* err_no);
+static void _execute_part(int start, int end, char** argv);
+static void _handle_pipe(int pivot, int argc, char** argv);
 static void _handle_parenthesis(int argc, char** argv);
+
 static int _find_operator(int argc, char** argv);
 static void free_strings(char** arr, int n);
 
@@ -95,7 +98,6 @@ char** parse(char* input, int* size) {
  * @param argv the list of tokens 
  * 
  * @returns the position of the lowest-priority operator
- * 
  */
 static int _find_operator(int argc, char** argv) {
     int depth = 0;
@@ -144,6 +146,33 @@ static int _find_operator(int argc, char** argv) {
     return (pipe_pos != 0) ? pipe_pos : ((redir_pos != 0) ? redir_pos : -1);
 }
 
+/**
+ * Executes the section of the arguments
+ */
+static void _execute_part(int start, int end, char** argv) {
+    // get the number of arguments
+    int argc = end - start;
+
+    // allocate memory for the list of tokens
+    char** part = (char **) malloc(sizeof(char*) * argc);
+
+    for(int i = 0, pos = start; i < argc && pos < end; i++, pos++) {
+        int tok_len = strlen(argv[pos]) + 1;
+
+        // allocate memory for the string token
+        part[i] = (char *) malloc(sizeof(char) * tok_len);
+
+        // copy the string into the new string
+        strncpy(part[i], argv[pos], tok_len);
+    }
+
+    // execute the command
+    execute(argc, part);
+
+    // free the memory here
+    free_strings(part, argc);
+}
+
 // executes commands in the arguments (divide and conquer)
 void execute(int argc, char** argv) {
     assert(argv != NULL);
@@ -176,14 +205,14 @@ void execute(int argc, char** argv) {
             int err = 0; // status
 
             // use execute helper function
-            _exec_cmd(argv, &err);
+            _execute_cmd(argv, &err);
         } else {                    // PARENT
             int status;
             waitpid(child, &status, 0);
 
             // Return from the child
             status = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-            DEBUG_PRINT("Status: %d\n", status);
+            DEBUG_PRINT("PID %d Exit Status: %d\n", child, status)
 
             // check error status 
             switch (status) {
@@ -198,7 +227,7 @@ void execute(int argc, char** argv) {
                     free_strings(argv, argc);
 
                     // Exit the entire program
-                    printf("Bye Bye.\n");
+                    printf("Bye bye.\n");
                     exit(0);
                     break;
                 }
@@ -211,38 +240,15 @@ void execute(int argc, char** argv) {
 		// Check operator
 		char operator = argv[pivot][0];
 		
-		int nLeft = pivot; // 0 -> (pivot - 1) (inclu.)
-		int nRight = argc - pivot - 1; // (pivot + 1) -> (argc - 1) (inclu.)
 		switch (operator) {
 			case ';':
-				// split the statement into left and right commands
-				left = (char**) malloc(sizeof(char*) * nLeft);
-				right = (char**) malloc(sizeof(char*) * nRight);
-
-				// copy the left statements
-				for(int i = 0; i < nLeft; i++) {
-					int tok_len = strlen(argv[i]) + 1;
-					left[i] = (char *) malloc(sizeof(char) * tok_len);
-
-					strncpy(left[i], argv[i], tok_len);
-				}
-
-				// copy the right statements
-				for (int j = pivot + 1; j < argc; j++) {
-					int tok_len = strlen(argv[j]) + 1;
-					right[j - pivot - 1] = (char *) malloc(sizeof(char) * tok_len);
-
-					strncpy(right[j - pivot - 1], argv[j], tok_len);
-				}
-
-				// execute first left then right
-				execute(nLeft, left);
-				execute(nRight, right);
-
-				// free the memory for both statements
-				free_strings(left, nLeft);
-				free_strings(right, nRight);
+                // execute each part
+                _execute_part(0, pivot, argv);
+                _execute_part(pivot + 1, argc, argv);
 				break;
+            case '|':
+                _handle_pipe(pivot, argc, argv);
+                break;
 			default:
 				break;
 		}
@@ -250,10 +256,10 @@ void execute(int argc, char** argv) {
     }
 }
 
-// Command helper (Assumes this is a child)
-static void _exec_cmd(char** argv, int* err_no) {
+// Command helper (Assumes it's in child process)
+static void _execute_cmd(char** argv, int* err_no) {
     char* command = argv[0];
-    DEBUG_PRINT("_exec_cmd: command = \"%s\"\n", command);
+    DEBUG_PRINT("_execute_cmd: command = \"%s\"\n", command);
 
     // Built-in commands
     if(strncmp(command, "exit", strlen("exit")) == 0) {
@@ -264,7 +270,7 @@ static void _exec_cmd(char** argv, int* err_no) {
     }
     
     // error
-    fprintf(stderr, "Unknown Command: %s\n", command);
+    fprintf(stderr, "%s: command not found\n", command);
     _exit(ERROR_FAIL);
 }
 
@@ -292,6 +298,63 @@ static void _handle_parenthesis(int argc, char** argv) {
     // free the memory
     free_strings(str_cmds, new_length);
     return;
+}
+
+static void _handle_pipe(int pivot, int argc, char** argv) {
+    // create a pipe
+    int pipe_fd[2];
+    assert(pipe(pipe_fd) != -1);
+
+    // set read and write fd
+    int read_fd = pipe_fd[0];
+    int write_fd = pipe_fd[1];
+
+    // execute the pipes
+    pid_t childA = fork();
+
+    // fork child a
+    if (childA == 0) {
+        // fork child B
+        pid_t childB = fork();
+        if (childB == 0) {
+            // close read side and stdout
+            close(STDOUT_FILENO);
+            close(read_fd);
+
+            // replace stdout with write fd of pipe
+            assert(dup2(write_fd, STDOUT_FILENO) != -1);
+            close(write_fd);
+
+            // execute command 1
+            _execute_part(0, pivot, argv);
+
+            // exit out of child B
+            _exit(0);
+        }
+        // close write side and stdin
+        close(STDIN_FILENO);
+        close(write_fd);
+
+        // replace stdin with read_fd of pipe
+        assert(dup2(read_fd, STDIN_FILENO) != -1);
+        close(read_fd);
+
+        // execute command 2
+        _execute_part(pivot + 1, argc, argv);
+
+        // wait for child B
+        waitpid(childB, NULL, 0);
+
+        // exit out of child A
+        _exit(0);
+    } else {
+        // close unused pipe in parent
+        close(read_fd);
+        close(write_fd);
+
+        // wait for child A to finish
+        waitpid(childA, NULL, 0);
+    }
 }
 
 // free the strings in the allocated array
