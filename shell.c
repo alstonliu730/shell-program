@@ -21,8 +21,13 @@
 
 // max number of input per line
 #define MAX_INPUT 256
+#define MAX_CWD 1024
 #define HALF_INPUT (MAX_INPUT / 2)
 #define QUARTER_INPUT (MAX_INPUT / 4)
+
+// Redirection options
+#define INPUT_REDIR 1
+#define OUTPUT_REDIR 0
 
 // Child Error Status
 #define ERROR_SUCCESS 0x1
@@ -35,14 +40,16 @@
 // symbols for scanner
 const char haystack[] = "()|<>";
 
+// Global int flag for exiting
+static int exit_flag = 0;
+
 // Function declarations
 char** parse(char* input, int* size);
 void execute(int argc, char** argv);
-static void _execute_cmd(char** argv, int* err_no);
+static void _execute_cmd(int argc, char** argv);
 static void _execute_part(int start, int end, char** argv);
 static void _handle_pipe(int pivot, int argc, char** argv);
-static void _handle_parenthesis(int argc, char** argv);
-
+static void _handle_redirection(int type, int pivot, int argc, char** argv);
 static int _find_operator(int argc, char** argv);
 static void free_strings(char** arr, int n);
 
@@ -61,7 +68,7 @@ char** parse(char* input, int* size) {
     int num_tok = get_tokens(tok_vect, input);  // get tokens from the input
     
     // allocate memory for the output buffer
-    char** tokens = (char **) malloc(sizeof(char*) * num_tok);
+    char** tokens = (char **) malloc(sizeof(char*) * (num_tok + 1));
 
     // copy tokens into the new buffer
     for(int i = 0; i < num_tok; i++) {
@@ -74,6 +81,9 @@ char** parse(char* input, int* size) {
         // copy string into result array
         strncpy(tokens[i], tok_vect->data[i], length);    
     }
+
+    // Set null terminator
+    tokens[num_tok] = NULL;
 
     // free the token vector
     free_vector(tok_vect);
@@ -135,26 +145,74 @@ static int _find_operator(int argc, char** argv) {
                 pipe_pos = i;
             } 
             
-            // keep first occurance of redirection symbol
-            else if ((operator == '<' || operator == '>') && redir_pos == -1) {
+            // get last redirection operator
+            else if (operator == '<' || operator == '>') {
                 redir_pos = i;
             }
         }
     }
 
     // Prioritize operators
-    return (pipe_pos != 0) ? pipe_pos : ((redir_pos != 0) ? redir_pos : -1);
+    return (pipe_pos > 0) ? pipe_pos : ((redir_pos > 0) ? redir_pos : -1);
+}
+
+// helper function to execute fundamental command
+static void _execute_cmd(int argc, char** argv) {
+    char* command = argv[0];
+    DEBUG_PRINT("_execute_cmd: command = \"%s\"\n", command);
+
+    // Built-in commands
+    if(strncmp(command, "exit", strlen("exit")) == 0) {         // EXIT FUNCTION
+        // Free the memory from argv
+        free_strings(argv, argc);
+
+        // Exit the entire program
+        printf("Bye bye.\n");
+        exit(0);
+    } else if (strncmp(command, "cd", strlen("cd")) == 0) {     // CD FUNCTION
+        // no path given (use default path)
+        if (argc < 2 && chdir(getenv("HOME")) != 0) {
+            fprintf(stderr, "cd: %s\n", strerror(errno));
+            return;
+        } else if(chdir(argv[1]) != 0) {  // use path given
+            fprintf(stderr, "cd: %s\n", strerror(errno));
+            return;
+        }
+        return;
+    } else if (strncmp(command, "help", strlen("help")) == 0) {
+        printf("----- Help Menu -----\n");
+        printf("cd : switch the directory\n");
+        printf("source [filename] : takes an existing file by filename and executes each line\n");
+        printf("previous : executes the last command\n");
+        printf("exit : exit the shell\n");
+        printf("help : prints all commands that are native to the shell\n");
+        return;
+    }
+    // Fork a child and execute the command
+    pid_t child = fork();
+    
+    if (child == 0) {           // CHILD
+        // use execute helper function
+        execvp(argv[0], argv); // replaces the process
+
+        // Command not found error
+        fprintf(stderr, "%s: command not found\n", command);
+        _exit(EXIT_FAILURE);
+    } else {                    // PARENT
+        waitpid(child, NULL, 0);
+        return;
+    }
 }
 
 /**
- * Executes the section of the arguments
+ * Executes the section of the arguments; end exclusive
  */
 static void _execute_part(int start, int end, char** argv) {
     // get the number of arguments
     int argc = end - start;
 
     // allocate memory for the list of tokens
-    char** part = (char **) malloc(sizeof(char*) * argc);
+    char** part = (char **) malloc(sizeof(char*) * (argc + 1));
 
     for(int i = 0, pos = start; i < argc && pos < end; i++, pos++) {
         int tok_len = strlen(argv[pos]) + 1;
@@ -164,142 +222,19 @@ static void _execute_part(int start, int end, char** argv) {
 
         // copy the string into the new string
         strncpy(part[i], argv[pos], tok_len);
-    }
+    }  
+
+    // Null terminator
+    part[argc] = NULL;
 
     // execute the command
     execute(argc, part);
 
     // free the memory here
-    free_strings(part, argc);
+    free_strings(part, argc + 1);
 }
 
-// executes commands in the arguments (divide and conquer)
-void execute(int argc, char** argv) {
-    assert(argv != NULL);
-    assert(argc >= 1);
-    
-    #ifdef DEBUG
-        DEBUG_PRINT("DEBUG: execute: argv = \n")
-        for (int i = 0; i < argc; i++) {
-            DEBUG_PRINT("- argv[%d] = %s\n", i, argv[i])
-        }
-    #endif
-
-    // find the pivot until base case
-    int pivot = _find_operator(argc, argv);
-    char** left;
-    char** right;
-
-    // Base Case
-    if (pivot < 0 || pivot == (argc - 1)) {
-        // Check for parentheses
-        if (argv[0][0] == '(' && argv[argc - 1][0] == ')') {
-            _handle_parenthesis(argc, argv);
-            return;
-        } 
-
-        // Fork a child and execute the command
-        pid_t child = fork();
-        
-        if (child == 0) {           // CHILD
-            int err = 0; // status
-
-            // use execute helper function
-            _execute_cmd(argv, &err);
-        } else {                    // PARENT
-            int status;
-            waitpid(child, &status, 0);
-
-            // Return from the child
-            status = WIFEXITED(status) ? WEXITSTATUS(status) : -1;
-            DEBUG_PRINT("PID %d Exit Status: %d\n", child, status)
-
-            // check error status 
-            switch (status) {
-                case ERROR_SUCCESS:
-                    DEBUG_PRINT("Executed Successfully.\n")
-                    break;
-
-                case ERROR_EXIT: // exit function
-                {
-                    DEBUG_PRINT("Exiting Shell with status %d\n", WEXITSTATUS(status))
-                    // Free the memory from argv
-                    free_strings(argv, argc);
-
-                    // Exit the entire program
-                    printf("Bye bye.\n");
-                    exit(0);
-                    break;
-                }
-                default: // error 
-                    break;
-            }
-			return;
-        }
-    } else {
-		// Check operator
-		char operator = argv[pivot][0];
-		
-		switch (operator) {
-			case ';':
-                // execute each part
-                _execute_part(0, pivot, argv);
-                _execute_part(pivot + 1, argc, argv);
-				break;
-            case '|':
-                _handle_pipe(pivot, argc, argv);
-                break;
-			default:
-				break;
-		}
-		return;
-    }
-}
-
-// Command helper (Assumes it's in child process)
-static void _execute_cmd(char** argv, int* err_no) {
-    char* command = argv[0];
-    DEBUG_PRINT("_execute_cmd: command = \"%s\"\n", command);
-
-    // Built-in commands
-    if(strncmp(command, "exit", strlen("exit")) == 0) {
-        DEBUG_PRINT("PID %d exiting with status %d\n", getpid(), ERROR_EXIT)
-        _exit(ERROR_EXIT);
-    } else {    // Otherwise 
-        execvp(argv[0], argv); // replaces the process
-    }
-    
-    // error
-    fprintf(stderr, "%s: command not found\n", command);
-    _exit(ERROR_FAIL);
-}
-
-
-// Assuming that the input is a full parenthesis statement
-static void _handle_parenthesis(int argc, char** argv) {
-    // new length for the statement
-    int new_length = argc - 2;
-
-    // allocate memory for the statement inside
-    char **str_cmds = (char **) malloc(new_length * sizeof(char*));
-
-    // copy the statement inside 
-    for(int i = 1; i < (argc - 1); i++) {
-        int tok_len = strlen(argv[i]);
-        str_cmds[i - 1] = (char *) malloc(tok_len * sizeof(char));
-
-        // copy argument into new string array
-        memcpy(str_cmds[i - 1], argv[i], tok_len);
-    }
-
-    // execute the command
-    execute(new_length, str_cmds);
-
-    // free the memory
-    free_strings(str_cmds, new_length);
-    return;
-}
-
+// Handles the logic for piping
 static void _handle_pipe(int pivot, int argc, char** argv) {
     // create a pipe
     int pipe_fd[2];
@@ -357,6 +292,111 @@ static void _handle_pipe(int pivot, int argc, char** argv) {
     }
 }
 
+// Handles the logic for redirection
+static void _handle_redirection(int type, int pivot, int argc, char** argv) {
+    assert(type == 0 || type == 1);
+    assert(argv != NULL);
+    assert(pivot != 0);
+    assert(argc > 2);
+
+    pid_t child = fork();
+    // Input Redirection (1)
+    if (child == 0) {
+        if (pivot + 1 >= argc) {
+            fprintf(stderr, "No file indicated for redirection.\n");
+            _exit(EXIT_FAILURE);
+        }
+
+        // get file path 
+        char* file_path = argv[pivot + 1];
+
+        // Input Redirection (1)
+        if (type) {
+            // close stdin for input
+            close(STDIN_FILENO);
+
+            // open the file for reading
+            int fd = open(file_path, O_RDONLY);
+            if(fd != STDIN_FILENO) {
+                fprintf(stderr, "Failed to open file on file descriptor (%d). Returned: %d\n", STDIN_FILENO, fd);
+                _exit(EXIT_FAILURE);
+            }
+        }
+        // Output Redirection (0)
+        else {
+            // closes stdout for output
+            close(STDOUT_FILENO);
+
+            // open the file for writing
+            int fd = open(file_path, O_WRONLY | O_CREAT | O_TRUNC, 0644);
+            if (fd != STDOUT_FILENO) {
+                fprintf(stderr, "Failed to open file on file descriptor (%d). Returned: %d\n", STDIN_FILENO, fd);
+                _exit(EXIT_FAILURE);
+            }
+        }
+        // execute the function up till the pivot
+        _execute_part(0, pivot, argv);
+        _exit(EXIT_SUCCESS);
+    } else {
+        waitpid(child, NULL, 0);
+    }
+}
+
+// executes commands in the arguments (divide and conquer)
+void execute(int argc, char** argv) {
+    assert(argv != NULL);
+    assert(argc >= 1);
+    
+    #ifdef DEBUG
+        DEBUG_PRINT("DEBUG: execute: argv = \n")
+        for (int i = 0; i < argc; i++) {
+            DEBUG_PRINT("- argv[%d] = %s\n", i, argv[i])
+        }
+    #endif
+
+    // find the pivot until base case
+    int pivot = _find_operator(argc, argv);
+    char** left;
+    char** right;
+
+    // Base Case
+    if (pivot < 0 || pivot == (argc - 1)) {
+        // Check for parentheses
+        if (argv[0][0] == '(' && argv[argc - 1][0] == ')') {
+            _execute_part(1, argc - 1, argv);
+            return;
+        } 
+
+        // execute the command
+        _execute_cmd(argc, argv);
+    } else {
+		// Check operator
+		char operator = argv[pivot][0];
+		
+		switch (operator) {
+			case ';':
+                // execute each part
+                _execute_part(0, pivot, argv);
+                _execute_part(pivot + 1, argc, argv);
+				break;
+            case '|':
+                _handle_pipe(pivot, argc, argv);
+                break;
+            case '>':
+                _handle_redirection(OUTPUT_REDIR, pivot, argc, argv);
+                break;
+            case '<':
+                _handle_redirection(INPUT_REDIR, pivot, argc, argv);
+                break;
+			default:
+                fprintf(stderr, "Unknown operator %c\n", operator);
+                _exit(EXIT_FAILURE);
+				break;
+		}
+		return;
+    }
+}
+
 // free the strings in the allocated array
 static void free_strings(char** arr, int n) {
 	for(int i = 0; i < n; i++) {
@@ -372,8 +412,9 @@ int main(int argc, char **argv) {
 
     // keep running the shell program indefinitely
     while(1) {
+        // print shell heading
         printf("shell $ ");
-
+        
         // place to store input from user
         char input[MAX_INPUT];
         fflush(stdin);
