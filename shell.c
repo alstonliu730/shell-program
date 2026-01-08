@@ -162,14 +162,14 @@ static void _execute_cmd(int argc, char** argv) {
     DEBUG_PRINT("_execute_cmd: command = \"%s\"\n", command);
 
     // Built-in commands
-    if(strncmp(command, "exit", strlen("exit")) == 0) {         // EXIT FUNCTION
+    if(strncmp(command, "exit", strlen("exit")) == 0) {         // EXIT Function
         // Free the memory from argv
         free_strings(argv, argc);
 
         // Exit the entire program
         printf("Bye bye.\n");
         exit(0);
-    } else if (strncmp(command, "cd", strlen("cd")) == 0) {     // CD FUNCTION
+    } else if (strncmp(command, "cd", strlen("cd")) == 0) {     // CD Function
         // no path given (use default path)
         if (argc < 2 && chdir(getenv("HOME")) != 0) {
             fprintf(stderr, "cd: %s\n", strerror(errno));
@@ -179,7 +179,51 @@ static void _execute_cmd(int argc, char** argv) {
             return;
         }
         return;
-    } else if (strncmp(command, "help", strlen("help")) == 0) {
+    } else if (strncmp(command, "source", strlen("source")) == 0) { // SOURCE Function
+        // invalid case
+        if (argc < 2) {
+            fprintf(stderr, "source: filename argument required\n");
+            return;
+        }
+
+        // get file stream in read only mode
+        FILE* f = fopen(argv[1], "r");
+        if (f == NULL) {
+            fprintf(stderr, "source: %s\n", strerror(errno));
+            return;
+        }
+
+        // read each line
+        char line[MAX_INPUT];
+        size_t len;
+        while (fgets(line, MAX_INPUT, f) != NULL) {
+            size_t len = strlen(line);
+            // replace new line with null terminated string
+            if (len > 0 && line[len - 1] == '\n') {
+                line[len - 1] = '\0';
+            }
+
+            // parse tokens
+            int nTok = 0;
+            char** line_tokens = parse(line, &nTok);
+
+            // if there's no tokens found
+            if (nTok == 0) { continue; }
+
+            // execute the commands
+            execute(nTok, line_tokens);
+
+            // free the memory in tokens
+            free_strings(line_tokens, nTok);
+
+            // clear the line buffer
+            memset(line, 0, MAX_INPUT);
+        }
+
+        // close the stream
+        fclose(f);
+        return;
+    } else if (strncmp(command, "help", strlen("help")) == 0) { // HELP Function
         printf("----- Help Menu -----\n");
         printf("cd : switch the directory\n");
         printf("source [filename] : takes an existing file by filename and executes each line\n");
@@ -187,7 +231,7 @@ static void _execute_cmd(int argc, char** argv) {
         printf("exit : exit the shell\n");
         printf("help : prints all commands that are native to the shell\n");
         return;
-    }
+    } 
     // Fork a child and execute the command
     pid_t child = fork();
     
@@ -417,7 +461,6 @@ int main(int argc, char **argv) {
         
         // place to store input from user
         char input[MAX_INPUT];
-        fflush(stdin);
 
         // read user input from stdin
         size_t len;
