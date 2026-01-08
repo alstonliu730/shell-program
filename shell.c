@@ -40,8 +40,9 @@
 // symbols for scanner
 const char haystack[] = "()|<>";
 
-// Global int flag for exiting
-static int exit_flag = 0;
+// Global previous command
+static char** previous = NULL;
+static int nPrevTokens = 0;
 
 // Function declarations
 char** parse(char* input, int* size);
@@ -486,6 +487,53 @@ int main(int argc, char **argv) {
             continue;
         }
 
+        // previous command
+        if (strncmp(tokens[0], "prev", strlen("prev")) == 0) {
+            if (!previous) {
+                fprintf(stderr, "prev: no previous command found.\n");
+                continue;
+            }
+            // free current tokens
+            free_strings(tokens, nToken);
+
+            // set the new tokens here
+            nToken = nPrevTokens;
+            
+            // allocate memory for tokens
+            tokens = (char**) malloc(sizeof(char*) * (nToken + 1));
+
+            // copy the previous tokens into the new token array'
+            for(int i = 0; i < nPrevTokens; i++) {
+                int tok_len = strlen(previous[i]) + 1;
+
+                tokens[i] = (char *) malloc(sizeof(char) * tok_len);
+
+                strncpy(tokens[i], previous[i], tok_len);
+            }
+
+            // set the null terminator
+            tokens[nToken] = NULL;
+        } 
+        // new command
+        else {
+            // free the string if not null
+            if (previous) {
+                free_strings(previous, nPrevTokens);
+            }
+
+            // allocate memory for the new previous command
+            previous = (char **) malloc(sizeof(char*) * nToken);
+            nPrevTokens = nToken;
+            for(int i = 0; i < nToken; i++) {
+                int tok_len = strlen(tokens[i]) + 1;
+
+                previous[i] = (char*) malloc(sizeof(char) * tok_len);
+
+                strncpy(previous[i], tokens[i], tok_len);
+            }
+        }
+        
+        
         #ifdef DEBUG
             DEBUG_PRINT("DEBUG tokens: \n")
             for (int i = 0; i < nToken; i++) {
